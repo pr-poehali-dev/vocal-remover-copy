@@ -89,23 +89,21 @@ export default function Index() {
       
       toast({ title: "Загрузка...", description: "Отправляю файл" });
       
-      if (responseData.status === 'post') {
-        const formData = new FormData();
-        Object.keys(responseData.fields).forEach(key => {
-          formData.append(key, responseData.fields[key]);
-        });
-        formData.append('file', fileToUpload);
-        
-        const uploadResponse = await fetch(responseData.upload_url, {
-          method: 'POST',
-          body: formData
-        });
-        
-        if (!uploadResponse.ok) {
-          throw new Error('Failed to upload file to S3');
-        }
-      } else if (responseData.status === 'multipart') {
-        throw new Error('Multipart upload not implemented yet');
+      const formData = new FormData();
+      Object.keys(responseData.fields).forEach(key => {
+        formData.append(key, responseData.fields[key]);
+      });
+      formData.append('file', fileToUpload);
+      
+      const uploadResponse = await fetch(responseData.upload_url, {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error('[UPLOAD] S3 error:', errorText);
+        throw new Error('Failed to upload file to S3');
       }
       
       console.log('[UPLOAD] Success! CDN URL:', responseData.url);
