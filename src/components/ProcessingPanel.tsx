@@ -21,7 +21,7 @@ export default function ProcessingPanel({
           <Icon name="Waveform" size={28} />
           Выберите тип обработки
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Button
             variant="outline"
             size="lg"
@@ -30,7 +30,7 @@ export default function ProcessingPanel({
             onClick={() => onProcess('vocals', 'Вокал')}
           >
             <Icon name="Mic2" size={32} />
-            <span className="font-semibold">Изолировать вокал</span>
+            <span className="font-semibold">Вокал</span>
           </Button>
           <Button
             variant="outline"
@@ -49,10 +49,23 @@ export default function ProcessingPanel({
             disabled={processing}
             onClick={() => onProcess('bass', 'Бас')}
           >
-            <Icon name="Disc" size={32} />
-            <span className="font-semibold">Изолировать бас</span>
+            <Icon name="Radio" size={32} />
+            <span className="font-semibold">Бас</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            className="h-auto py-6 flex flex-col items-center gap-3"
+            disabled={processing}
+            onClick={() => onProcess('drums', 'Барабаны')}
+          >
+            <Icon name="Drum" size={32} />
+            <span className="font-semibold">Барабаны</span>
           </Button>
         </div>
+        <p className="text-sm text-muted-foreground mt-4 text-center">
+          Используется Demucs v4 - state-of-the-art AI модель от Meta Research
+        </p>
       </Card>
 
       {processing && (

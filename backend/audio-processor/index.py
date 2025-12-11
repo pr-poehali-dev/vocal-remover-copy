@@ -71,11 +71,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         os.environ['REPLICATE_API_TOKEN'] = replicate_token
         
+        stem_mapping = {
+            'vocals': 'vocals',
+            'accompaniment': 'no_vocals',
+            'bass': 'bass',
+            'drums': 'drums',
+            'other': 'other'
+        }
+        
+        stem_type = stem_mapping.get(separation_type, 'vocals')
+        
         output = replicate.run(
             "jarredou/demucs-v4:10a168f7e46a8def5b63b94c07afd23f4a24bdd1c7a76eeb8e03f56f96be0e8a",
             input={
                 "audio": audio_url,
-                "stem": separation_type
+                "stem": stem_type
             }
         )
         
