@@ -76,9 +76,19 @@ export default function Index() {
       setUploadProgress(30);
       
       const bytes = new Uint8Array(arrayBuffer);
-      const base64 = btoa(String.fromCharCode(...bytes));
-      setUploadProgress(50);
       
+      let base64 = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.slice(i, i + chunkSize);
+        base64 += String.fromCharCode.apply(null, Array.from(chunk));
+        
+        const progress = 30 + Math.floor((i / bytes.length) * 20);
+        setUploadProgress(progress);
+      }
+      base64 = btoa(base64);
+      
+      setUploadProgress(50);
       console.log('[UPLOAD] File converted to base64, uploading...');
       
       const uploadResponse = await fetch(UPLOAD_URL, {
