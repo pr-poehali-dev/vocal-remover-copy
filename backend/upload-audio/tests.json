@@ -7,18 +7,17 @@
       "expectedStatus": 200
     },
     {
-      "name": "Upload audio file via base64",
+      "name": "Initialize chunked upload",
       "method": "POST",
       "path": "/",
       "body": {
+        "action": "init",
         "filename": "test.mp3",
-        "content_type": "audio/mpeg",
-        "file_data": "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA"
+        "content_type": "audio/mpeg"
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "status": "uploaded",
-        "url": "string"
+        "upload_id": "string"
       },
       "bodyMatcher": "partial"
     }

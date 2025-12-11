@@ -12,11 +12,12 @@ s3 = boto3.client('s3',
     aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
 )
 
+upload_sessions = {}
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Загружает аудиофайлы напрямую в S3 через бэкенд.
-    Принимает файл в base64 или chunks, загружает в S3.
-    Поддерживает файлы до 100 МБ.
+    Загружает аудиофайлы в S3 через chunked upload.
+    Поддерживает загрузку частями для файлов до 100 МБ.
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -46,52 +47,117 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     try:
         body_data = json.loads(event.get('body', '{}'))
-        filename = body_data.get('filename', 'audio.mp3')
-        content_type = body_data.get('content_type', 'audio/mpeg')
-        file_data_b64 = body_data.get('file_data')
+        action = body_data.get('action', 'upload')
         
-        if not file_data_b64:
+        if action == 'init':
+            filename = body_data.get('filename', 'audio.mp3')
+            content_type = body_data.get('content_type', 'audio/mpeg')
+            
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            random_hash = hashlib.md5(f"{timestamp}{filename}".encode()).hexdigest()[:8]
+            upload_id = f"{timestamp}_{random_hash}"
+            key = f'audio/uploads/{upload_id}_{filename}'
+            
+            upload_sessions[upload_id] = {
+                'key': key,
+                'content_type': content_type,
+                'chunks': []
+            }
+            
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'upload_id': upload_id, 'key': key}),
+                'isBase64Encoded': False
+            }
+        
+        elif action == 'chunk':
+            upload_id = body_data.get('upload_id')
+            chunk_data = body_data.get('chunk_data')
+            chunk_index = body_data.get('chunk_index', 0)
+            
+            if upload_id not in upload_sessions:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Invalid upload_id'}),
+                    'isBase64Encoded': False
+                }
+            
+            chunk_bytes = base64.b64decode(chunk_data)
+            upload_sessions[upload_id]['chunks'].append((chunk_index, chunk_bytes))
+            
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'status': 'chunk_received', 'chunk_index': chunk_index}),
+                'isBase64Encoded': False
+            }
+        
+        elif action == 'finalize':
+            upload_id = body_data.get('upload_id')
+            
+            if upload_id not in upload_sessions:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Invalid upload_id'}),
+                    'isBase64Encoded': False
+                }
+            
+            session = upload_sessions[upload_id]
+            session['chunks'].sort(key=lambda x: x[0])
+            
+            full_data = b''.join([chunk[1] for chunk in session['chunks']])
+            
+            s3.put_object(
+                Bucket='files',
+                Key=session['key'],
+                Body=full_data,
+                ContentType=session['content_type']
+            )
+            
+            cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{session['key']}"
+            
+            del upload_sessions[upload_id]
+            
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({
+                    'status': 'uploaded',
+                    'url': cdn_url,
+                    'key': session['key'],
+                    'size': len(full_data)
+                }),
+                'isBase64Encoded': False
+            }
+        
+        else:
             return {
                 'statusCode': 400,
                 'headers': {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*'
                 },
-                'body': json.dumps({'error': 'file_data (base64) is required'}),
+                'body': json.dumps({'error': 'Invalid action'}),
                 'isBase64Encoded': False
             }
-        
-        file_bytes = base64.b64decode(file_data_b64)
-        
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        random_hash = hashlib.md5(f"{timestamp}{filename}".encode()).hexdigest()[:8]
-        key = f'audio/uploads/{timestamp}_{random_hash}_{filename}'
-        
-        s3.put_object(
-            Bucket='files',
-            Key=key,
-            Body=file_bytes,
-            ContentType=content_type
-        )
-        
-        cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
-        
-        result = {
-            'status': 'uploaded',
-            'url': cdn_url,
-            'key': key,
-            'size': len(file_bytes)
-        }
-        
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps(result),
-            'isBase64Encoded': False
-        }
         
     except Exception as e:
         return {

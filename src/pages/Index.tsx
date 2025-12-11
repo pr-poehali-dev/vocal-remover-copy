@@ -70,45 +70,71 @@ export default function Index() {
       console.log('[UPLOAD] Starting upload for:', fileToUpload.name, 'Size:', fileToUpload.size);
       
       setUploading(true);
-      setUploadProgress(10);
+      setUploadProgress(5);
       
-      const arrayBuffer = await fileToUpload.arrayBuffer();
-      setUploadProgress(30);
-      
-      const bytes = new Uint8Array(arrayBuffer);
-      
-      let base64 = '';
-      const chunkSize = 8192;
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        const chunk = bytes.slice(i, i + chunkSize);
-        base64 += String.fromCharCode.apply(null, Array.from(chunk));
-        
-        const progress = 30 + Math.floor((i / bytes.length) * 20);
-        setUploadProgress(progress);
-      }
-      base64 = btoa(base64);
-      
-      setUploadProgress(50);
-      console.log('[UPLOAD] File converted to base64, uploading...');
-      
-      const uploadResponse = await fetch(UPLOAD_URL, {
+      const initResponse = await fetch(UPLOAD_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          action: 'init',
           filename: fileToUpload.name,
-          content_type: fileToUpload.type,
-          file_data: base64
+          content_type: fileToUpload.type
         })
       });
       
-      setUploadProgress(90);
+      if (!initResponse.ok) throw new Error('Init failed');
+      const { upload_id } = await initResponse.json();
       
-      if (!uploadResponse.ok) {
-        const error = await uploadResponse.json();
-        throw new Error(error.error || 'Upload failed');
+      setUploadProgress(10);
+      
+      const arrayBuffer = await fileToUpload.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      
+      const CHUNK_SIZE = 2 * 1024 * 1024;
+      const totalChunks = Math.ceil(bytes.length / CHUNK_SIZE);
+      
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, bytes.length);
+        const chunkBytes = bytes.slice(start, end);
+        
+        let chunkBase64 = '';
+        const convertChunkSize = 8192;
+        for (let j = 0; j < chunkBytes.length; j += convertChunkSize) {
+          const miniChunk = chunkBytes.slice(j, j + convertChunkSize);
+          chunkBase64 += String.fromCharCode.apply(null, Array.from(miniChunk));
+        }
+        chunkBase64 = btoa(chunkBase64);
+        
+        const chunkResponse = await fetch(UPLOAD_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'chunk',
+            upload_id,
+            chunk_data: chunkBase64,
+            chunk_index: i
+          })
+        });
+        
+        if (!chunkResponse.ok) throw new Error(`Chunk ${i} failed`);
+        
+        const progress = 10 + Math.floor(((i + 1) / totalChunks) * 80);
+        setUploadProgress(progress);
       }
       
-      const responseData = await uploadResponse.json();
+      const finalizeResponse = await fetch(UPLOAD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'finalize',
+          upload_id
+        })
+      });
+      
+      if (!finalizeResponse.ok) throw new Error('Finalize failed');
+      
+      const responseData = await finalizeResponse.json();
       console.log('[UPLOAD] Success! CDN URL:', responseData.url);
       setUploadProgress(100);
       setUploadedUrl(responseData.url);
