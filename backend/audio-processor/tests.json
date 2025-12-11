@@ -1,0 +1,23 @@
+{
+  "tests": [
+    {
+      "name": "Test OPTIONS for CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Test missing audio_url",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "type": "vocals"
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

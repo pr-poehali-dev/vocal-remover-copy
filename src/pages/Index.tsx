@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,12 +7,25 @@ import { Progress } from "@/components/ui/progress";
 import Icon from "@/components/ui/icon";
 import { useToast } from "@/hooks/use-toast";
 
+const UPLOAD_URL = "https://functions.poehali.dev/e4c00d25-fe2e-49ea-8e53-af664e48d42f";
+const PROCESS_URL = "https://functions.poehali.dev/fb2c1e89-35fa-40a6-b0fb-76d4a109f8ce";
+
+interface ProcessedTrack {
+  type: string;
+  url: string;
+  name: string;
+}
+
 export default function Index() {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [activeTab, setActiveTab] = useState("upload");
+  const [uploadedUrl, setUploadedUrl] = useState<string>("");
+  const [processedTracks, setProcessedTracks] = useState<ProcessedTrack[]>([]);
+  const [currentPlaying, setCurrentPlaying] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const { toast } = useToast();
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -24,12 +37,13 @@ export default function Index() {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile && droppedFile.type.startsWith("audio/")) {
       setFile(droppedFile);
+      await uploadFile(droppedFile);
       setActiveTab("process");
     } else {
       toast({
@@ -40,31 +54,119 @@ export default function Index() {
     }
   };
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
+      await uploadFile(selectedFile);
       setActiveTab("process");
     }
   };
 
-  const processAudio = () => {
+  const uploadFile = async (fileToUpload: File) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target?.result as string;
+        const base64Data = base64.split(',')[1];
+        
+        const response = await fetch(UPLOAD_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file: base64Data,
+            filename: fileToUpload.name,
+            content_type: fileToUpload.type
+          })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+          setUploadedUrl(data.url);
+          toast({ title: "Файл загружен", description: "Готов к обработке" });
+        } else {
+          throw new Error(data.error);
+        }
+      };
+      reader.readAsDataURL(fileToUpload);
+    } catch (error) {
+      toast({ 
+        title: "Ошибка загрузки",
+        description: String(error),
+        variant: "destructive" 
+      });
+    }
+  };
+
+  const processAudio = async (type: string, name: string) => {
+    if (!uploadedUrl) {
+      toast({ title: "Ошибка", description: "Сначала загрузите файл", variant: "destructive" });
+      return;
+    }
+    
     setProcessing(true);
     setProgress(0);
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setProcessing(false);
-          toast({
-            title: "Готово!",
-            description: "Аудио успешно обработано",
-          });
-          return 100;
-        }
-        return prev + 10;
+    
+    const progressInterval = setInterval(() => {
+      setProgress(prev => Math.min(prev + 5, 90));
+    }, 500);
+    
+    try {
+      const response = await fetch(PROCESS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audio_url: uploadedUrl,
+          type: type
+        })
       });
-    }, 300);
+      
+      const data = await response.json();
+      clearInterval(progressInterval);
+      setProgress(100);
+      
+      if (response.ok && data.output) {
+        const newTrack: ProcessedTrack = {
+          type: type,
+          url: data.output,
+          name: name
+        };
+        setProcessedTracks(prev => [...prev, newTrack]);
+        toast({ title: "Готово!", description: `${name} успешно обработан` });
+      } else {
+        throw new Error(data.error || 'Processing failed');
+      }
+    } catch (error) {
+      clearInterval(progressInterval);
+      toast({ 
+        title: "Ошибка обработки",
+        description: String(error),
+        variant: "destructive" 
+      });
+    } finally {
+      setProcessing(false);
+      setTimeout(() => setProgress(0), 1000);
+    }
+  };
+
+  const playTrack = (url: string) => {
+    if (audioRef.current) {
+      if (currentPlaying === url) {
+        audioRef.current.pause();
+        setCurrentPlaying(null);
+      } else {
+        audioRef.current.src = url;
+        audioRef.current.play();
+        setCurrentPlaying(url);
+      }
+    }
+  };
+
+  const downloadTrack = (url: string, filename: string) => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
   };
 
   return (
@@ -205,7 +307,7 @@ export default function Index() {
               <div className="grid grid-cols-3 gap-4">
                 <Button
                   className="w-full"
-                  onClick={processAudio}
+                  onClick={() => processAudio("vocals", "Вокал")}
                   disabled={processing}
                 >
                   <Icon name="Scissors" size={20} className="mr-2" />
@@ -214,7 +316,7 @@ export default function Index() {
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={processAudio}
+                  onClick={() => processAudio("no_vocals", "Инструментал")}
                   disabled={processing}
                 >
                   <Icon name="Music" size={20} className="mr-2" />
@@ -223,14 +325,52 @@ export default function Index() {
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={processAudio}
+                  onClick={() => processAudio("bass", "Бас")}
                   disabled={processing}
                 >
                   <Icon name="Guitar" size={20} className="mr-2" />
-                  Изолировать
+                  Изолировать бас
                 </Button>
               </div>
             </Card>
+
+            {processedTracks.length > 0 && (
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Обработанные треки</h3>
+                <div className="space-y-3">
+                  {processedTracks.map((track, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => playTrack(track.url)}
+                        >
+                          <Icon 
+                            name={currentPlaying === track.url ? "Pause" : "Play"} 
+                            size={20} 
+                          />
+                        </Button>
+                        <div>
+                          <p className="font-medium">{track.name}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{track.type}</p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => downloadTrack(track.url, `${track.name}.wav`)}
+                      >
+                        <Icon name="Download" size={16} className="mr-2" />
+                        Скачать
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            <audio ref={audioRef} onEnded={() => setCurrentPlaying(null)} />
 
             <Card className="p-6" id="tools">
               <h3 className="text-lg font-semibold mb-4">Настройки обработки</h3>
