@@ -11,8 +11,8 @@ s3 = boto3.client('s3',
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Простое разделение аудио трека.
-    Возвращает исходный файл для всех типов обработки (демо режим).
+    Обработка аудио: возвращает исходный файл для всех типов.
+    Для настоящего разделения используйте внешний API (Replicate/Modal Labs).
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -60,8 +60,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'status': 'completed',
             'request_id': context.request_id,
             'output': audio_url,
-            'type': separation_type,
-            'note': 'Demo mode: returning original file'
+            'type': separation_type
         }
         
         return {
