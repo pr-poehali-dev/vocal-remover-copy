@@ -7,17 +7,17 @@
       "expectedStatus": 200
     },
     {
-      "name": "Generate presigned POST for upload",
+      "name": "Upload audio file via base64",
       "method": "POST",
       "path": "/",
       "body": {
         "filename": "test.mp3",
         "content_type": "audio/mpeg",
-        "file_size": 1024
+        "file_data": "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA"
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "status": "post",
+        "status": "uploaded",
         "url": "string"
       },
       "bodyMatcher": "partial"

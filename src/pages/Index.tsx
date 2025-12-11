@@ -67,45 +67,31 @@ export default function Index() {
     try {
       console.log('[UPLOAD] Starting upload for:', fileToUpload.name, 'Size:', fileToUpload.size);
       
-      toast({ title: "Подготовка...", description: "Получаю ссылку для загрузки" });
+      toast({ title: "Подготовка...", description: "Читаю файл" });
       
-      const prepareResponse = await fetch(UPLOAD_URL, {
+      const arrayBuffer = await fileToUpload.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      const base64 = btoa(String.fromCharCode(...bytes));
+      
+      console.log('[UPLOAD] File converted to base64, uploading...');
+      toast({ title: "Загрузка...", description: "Отправляю файл" });
+      
+      const uploadResponse = await fetch(UPLOAD_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: fileToUpload.name,
           content_type: fileToUpload.type,
-          file_size: fileToUpload.size
+          file_data: base64
         })
       });
       
-      if (!prepareResponse.ok) {
-        const error = await prepareResponse.json();
-        throw new Error(error.error || 'Failed to prepare upload');
-      }
-      
-      const responseData = await prepareResponse.json();
-      console.log('[UPLOAD] Got upload config:', responseData.status);
-      
-      toast({ title: "Загрузка...", description: "Отправляю файл" });
-      
-      const formData = new FormData();
-      Object.keys(responseData.fields).forEach(key => {
-        formData.append(key, responseData.fields[key]);
-      });
-      formData.append('file', fileToUpload);
-      
-      const uploadResponse = await fetch(responseData.upload_url, {
-        method: 'POST',
-        body: formData
-      });
-      
       if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        console.error('[UPLOAD] S3 error:', errorText);
-        throw new Error('Failed to upload file to S3');
+        const error = await uploadResponse.json();
+        throw new Error(error.error || 'Upload failed');
       }
       
+      const responseData = await uploadResponse.json();
       console.log('[UPLOAD] Success! CDN URL:', responseData.url);
       setUploadedUrl(responseData.url);
       toast({ title: "✓ Файл загружен", description: "Готов к обработке" });

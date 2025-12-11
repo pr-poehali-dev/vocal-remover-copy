@@ -14,7 +14,8 @@ s3 = boto3.client('s3',
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Генерирует presigned POST URL для загрузки аудиофайлов в S3.
+    Загружает аудиофайлы напрямую в S3 через бэкенд.
+    Принимает файл в base64 или chunks, загружает в S3.
     Поддерживает файлы до 100 МБ.
     '''
     method: str = event.get('httpMethod', 'GET')
@@ -47,30 +48,39 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         body_data = json.loads(event.get('body', '{}'))
         filename = body_data.get('filename', 'audio.mp3')
         content_type = body_data.get('content_type', 'audio/mpeg')
+        file_data_b64 = body_data.get('file_data')
+        
+        if not file_data_b64:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'error': 'file_data (base64) is required'}),
+                'isBase64Encoded': False
+            }
+        
+        file_bytes = base64.b64decode(file_data_b64)
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         random_hash = hashlib.md5(f"{timestamp}{filename}".encode()).hexdigest()[:8]
         key = f'audio/uploads/{timestamp}_{random_hash}_{filename}'
         
-        cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
-        
-        presigned_post = s3.generate_presigned_post(
+        s3.put_object(
             Bucket='files',
             Key=key,
-            Fields={'Content-Type': content_type},
-            Conditions=[
-                {'Content-Type': content_type},
-                ['content-length-range', 0, 100 * 1024 * 1024]
-            ],
-            ExpiresIn=3600
+            Body=file_bytes,
+            ContentType=content_type
         )
         
+        cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{key}"
+        
         result = {
-            'status': 'post',
-            'upload_url': presigned_post['url'],
-            'fields': presigned_post['fields'],
+            'status': 'uploaded',
             'url': cdn_url,
-            'key': key
+            'key': key,
+            'size': len(file_bytes)
         }
         
         return {
