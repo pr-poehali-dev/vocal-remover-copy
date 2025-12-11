@@ -21,6 +21,8 @@ export default function Index() {
   const [isDragging, setIsDragging] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [activeTab, setActiveTab] = useState("upload");
   const [uploadedUrl, setUploadedUrl] = useState<string>("");
   const [processedTracks, setProcessedTracks] = useState<ProcessedTrack[]>([]);
@@ -67,14 +69,17 @@ export default function Index() {
     try {
       console.log('[UPLOAD] Starting upload for:', fileToUpload.name, 'Size:', fileToUpload.size);
       
-      toast({ title: "Подготовка...", description: "Читаю файл" });
+      setUploading(true);
+      setUploadProgress(10);
       
       const arrayBuffer = await fileToUpload.arrayBuffer();
+      setUploadProgress(30);
+      
       const bytes = new Uint8Array(arrayBuffer);
       const base64 = btoa(String.fromCharCode(...bytes));
+      setUploadProgress(50);
       
       console.log('[UPLOAD] File converted to base64, uploading...');
-      toast({ title: "Загрузка...", description: "Отправляю файл" });
       
       const uploadResponse = await fetch(UPLOAD_URL, {
         method: 'POST',
@@ -86,6 +91,8 @@ export default function Index() {
         })
       });
       
+      setUploadProgress(90);
+      
       if (!uploadResponse.ok) {
         const error = await uploadResponse.json();
         throw new Error(error.error || 'Upload failed');
@@ -93,6 +100,7 @@ export default function Index() {
       
       const responseData = await uploadResponse.json();
       console.log('[UPLOAD] Success! CDN URL:', responseData.url);
+      setUploadProgress(100);
       setUploadedUrl(responseData.url);
       toast({ title: "✓ Файл загружен", description: "Готов к обработке" });
       
@@ -104,6 +112,11 @@ export default function Index() {
         variant: "destructive" 
       });
       throw error;
+    } finally {
+      setTimeout(() => {
+        setUploading(false);
+        setUploadProgress(0);
+      }, 1000);
     }
   };
 
@@ -214,6 +227,20 @@ export default function Index() {
               onDrop={handleDrop}
               onFileInput={handleFileInput}
             />
+            {uploading && (
+              <div className="mt-6 bg-card p-6 rounded-xl border">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Загрузка файла...</span>
+                  <span className="text-sm font-bold">{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-secondary rounded-full h-2.5">
+                  <div 
+                    className="bg-primary h-2.5 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="process">
