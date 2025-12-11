@@ -63,39 +63,64 @@ export default function Index() {
     }
   };
 
-  const uploadFile = async (fileToUpload: File) => {
-    try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64 = e.target?.result as string;
-        const base64Data = base64.split(',')[1];
+  const uploadFile = async (fileToUpload: File): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      try {
+        const reader = new FileReader();
+        reader.onerror = () => {
+          toast({ 
+            title: "Ошибка чтения файла",
+            description: "Не удалось прочитать файл",
+            variant: "destructive" 
+          });
+          reject(new Error("File read error"));
+        };
         
-        const response = await fetch(UPLOAD_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            file: base64Data,
-            filename: fileToUpload.name,
-            content_type: fileToUpload.type
-          })
+        reader.onload = async (e) => {
+          try {
+            const base64 = e.target?.result as string;
+            const base64Data = base64.split(',')[1];
+            
+            toast({ title: "Загрузка...", description: "Отправляю файл на сервер" });
+            
+            const response = await fetch(UPLOAD_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                file: base64Data,
+                filename: fileToUpload.name,
+                content_type: fileToUpload.type
+              })
+            });
+            
+            const data = await response.json();
+            if (response.ok) {
+              setUploadedUrl(data.url);
+              toast({ title: "✓ Файл загружен", description: "Готов к обработке" });
+              resolve();
+            } else {
+              throw new Error(data.error || 'Upload failed');
+            }
+          } catch (error) {
+            toast({ 
+              title: "Ошибка загрузки",
+              description: String(error),
+              variant: "destructive" 
+            });
+            reject(error);
+          }
+        };
+        
+        reader.readAsDataURL(fileToUpload);
+      } catch (error) {
+        toast({ 
+          title: "Ошибка",
+          description: String(error),
+          variant: "destructive" 
         });
-        
-        const data = await response.json();
-        if (response.ok) {
-          setUploadedUrl(data.url);
-          toast({ title: "Файл загружен", description: "Готов к обработке" });
-        } else {
-          throw new Error(data.error);
-        }
-      };
-      reader.readAsDataURL(fileToUpload);
-    } catch (error) {
-      toast({ 
-        title: "Ошибка загрузки",
-        description: String(error),
-        variant: "destructive" 
-      });
-    }
+        reject(error);
+      }
+    });
   };
 
   const processAudio = async (type: string, name: string) => {
