@@ -74,7 +74,8 @@ export default function Index() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: fileToUpload.name,
-          content_type: fileToUpload.type
+          content_type: fileToUpload.type,
+          file_size: fileToUpload.size
         })
       });
       
@@ -83,23 +84,32 @@ export default function Index() {
         throw new Error(error.error || 'Failed to prepare upload');
       }
       
-      const { upload_url, url: cdnUrl } = await prepareResponse.json();
-      console.log('[UPLOAD] Got presigned URL, uploading directly to S3');
+      const responseData = await prepareResponse.json();
+      console.log('[UPLOAD] Got upload config:', responseData.status);
       
       toast({ title: "Загрузка...", description: "Отправляю файл" });
       
-      const uploadResponse = await fetch(upload_url, {
-        method: 'PUT',
-        headers: { 'Content-Type': fileToUpload.type },
-        body: fileToUpload
-      });
-      
-      if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file to S3');
+      if (responseData.status === 'post') {
+        const formData = new FormData();
+        Object.keys(responseData.fields).forEach(key => {
+          formData.append(key, responseData.fields[key]);
+        });
+        formData.append('file', fileToUpload);
+        
+        const uploadResponse = await fetch(responseData.upload_url, {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!uploadResponse.ok) {
+          throw new Error('Failed to upload file to S3');
+        }
+      } else if (responseData.status === 'multipart') {
+        throw new Error('Multipart upload not implemented yet');
       }
       
-      console.log('[UPLOAD] Success! CDN URL:', cdnUrl);
-      setUploadedUrl(cdnUrl);
+      console.log('[UPLOAD] Success! CDN URL:', responseData.url);
+      setUploadedUrl(responseData.url);
       toast({ title: "✓ Файл загружен", description: "Готов к обработке" });
       
     } catch (error) {

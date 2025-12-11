@@ -7,17 +7,17 @@
       "expectedStatus": 200
     },
     {
-      "name": "Generate presigned URL for upload",
+      "name": "Generate presigned POST for upload",
       "method": "POST",
       "path": "/",
       "body": {
         "filename": "test.mp3",
-        "content_type": "audio/mpeg"
+        "content_type": "audio/mpeg",
+        "file_size": 1024
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "status": "ready",
-        "upload_url": "string",
+        "status": "post",
         "url": "string"
       },
       "bodyMatcher": "partial"
