@@ -66,8 +66,11 @@ export default function Index() {
   const uploadFile = async (fileToUpload: File): Promise<void> => {
     return new Promise((resolve, reject) => {
       try {
+        console.log('[UPLOAD] Starting upload for:', fileToUpload.name, 'Size:', fileToUpload.size);
         const reader = new FileReader();
+        
         reader.onerror = () => {
+          console.error('[UPLOAD] FileReader error');
           toast({ 
             title: "Ошибка чтения файла",
             description: "Не удалось прочитать файл",
@@ -78,30 +81,52 @@ export default function Index() {
         
         reader.onload = async (e) => {
           try {
+            console.log('[UPLOAD] File read complete');
             const base64 = e.target?.result as string;
             const base64Data = base64.split(',')[1];
+            console.log('[UPLOAD] Base64 length:', base64Data?.length);
             
             toast({ title: "Загрузка...", description: "Отправляю файл на сервер" });
             
+            const payload = {
+              file: base64Data,
+              filename: fileToUpload.name,
+              content_type: fileToUpload.type
+            };
+            console.log('[UPLOAD] Sending to:', UPLOAD_URL);
+            console.log('[UPLOAD] Payload keys:', Object.keys(payload));
+            
             const response = await fetch(UPLOAD_URL, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                file: base64Data,
-                filename: fileToUpload.name,
-                content_type: fileToUpload.type
-              })
+              headers: { 
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(payload)
             });
             
-            const data = await response.json();
+            console.log('[UPLOAD] Response status:', response.status);
+            const responseText = await response.text();
+            console.log('[UPLOAD] Response body:', responseText);
+            
+            let data;
+            try {
+              data = JSON.parse(responseText);
+            } catch (e) {
+              console.error('[UPLOAD] Failed to parse JSON:', e);
+              throw new Error('Invalid JSON response: ' + responseText);
+            }
+            
             if (response.ok) {
+              console.log('[UPLOAD] Success! URL:', data.url);
               setUploadedUrl(data.url);
               toast({ title: "✓ Файл загружен", description: "Готов к обработке" });
               resolve();
             } else {
+              console.error('[UPLOAD] Upload failed:', data);
               throw new Error(data.error || 'Upload failed');
             }
           } catch (error) {
+            console.error('[UPLOAD] Error in onload:', error);
             toast({ 
               title: "Ошибка загрузки",
               description: String(error),
@@ -113,6 +138,7 @@ export default function Index() {
         
         reader.readAsDataURL(fileToUpload);
       } catch (error) {
+        console.error('[UPLOAD] Error in uploadFile:', error);
         toast({ 
           title: "Ошибка",
           description: String(error),
