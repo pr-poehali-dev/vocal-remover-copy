@@ -7,15 +7,18 @@
       "expectedStatus": 200
     },
     {
-      "name": "Test missing file data",
+      "name": "Generate presigned URL for upload",
       "method": "POST",
       "path": "/",
       "body": {
-        "filename": "test.mp3"
+        "filename": "test.mp3",
+        "content_type": "audio/mpeg"
       },
-      "expectedStatus": 400,
+      "expectedStatus": 200,
       "expectedBody": {
-        "error": "string"
+        "status": "ready",
+        "upload_url": "string",
+        "url": "string"
       },
       "bodyMatcher": "partial"
     }

@@ -64,89 +64,53 @@ export default function Index() {
   };
 
   const uploadFile = async (fileToUpload: File): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      try {
-        console.log('[UPLOAD] Starting upload for:', fileToUpload.name, 'Size:', fileToUpload.size);
-        const reader = new FileReader();
-        
-        reader.onerror = () => {
-          console.error('[UPLOAD] FileReader error');
-          toast({ 
-            title: "Ошибка чтения файла",
-            description: "Не удалось прочитать файл",
-            variant: "destructive" 
-          });
-          reject(new Error("File read error"));
-        };
-        
-        reader.onload = async (e) => {
-          try {
-            console.log('[UPLOAD] File read complete');
-            const base64 = e.target?.result as string;
-            const base64Data = base64.split(',')[1];
-            console.log('[UPLOAD] Base64 length:', base64Data?.length);
-            
-            toast({ title: "Загрузка...", description: "Отправляю файл на сервер" });
-            
-            const payload = {
-              file: base64Data,
-              filename: fileToUpload.name,
-              content_type: fileToUpload.type
-            };
-            console.log('[UPLOAD] Sending to:', UPLOAD_URL);
-            console.log('[UPLOAD] Payload keys:', Object.keys(payload));
-            
-            const response = await fetch(UPLOAD_URL, {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(payload)
-            });
-            
-            console.log('[UPLOAD] Response status:', response.status);
-            const responseText = await response.text();
-            console.log('[UPLOAD] Response body:', responseText);
-            
-            let data;
-            try {
-              data = JSON.parse(responseText);
-            } catch (e) {
-              console.error('[UPLOAD] Failed to parse JSON:', e);
-              throw new Error('Invalid JSON response: ' + responseText);
-            }
-            
-            if (response.ok) {
-              console.log('[UPLOAD] Success! URL:', data.url);
-              setUploadedUrl(data.url);
-              toast({ title: "✓ Файл загружен", description: "Готов к обработке" });
-              resolve();
-            } else {
-              console.error('[UPLOAD] Upload failed:', data);
-              throw new Error(data.error || 'Upload failed');
-            }
-          } catch (error) {
-            console.error('[UPLOAD] Error in onload:', error);
-            toast({ 
-              title: "Ошибка загрузки",
-              description: String(error),
-              variant: "destructive" 
-            });
-            reject(error);
-          }
-        };
-        
-        reader.readAsDataURL(fileToUpload);
-      } catch (error) {
-        console.error('[UPLOAD] Error in uploadFile:', error);
-        toast({ 
-          title: "Ошибка",
-          description: String(error),
-          variant: "destructive" 
-        });
-        reject(error);
+    try {
+      console.log('[UPLOAD] Starting upload for:', fileToUpload.name, 'Size:', fileToUpload.size);
+      
+      toast({ title: "Подготовка...", description: "Получаю ссылку для загрузки" });
+      
+      const prepareResponse = await fetch(UPLOAD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: fileToUpload.name,
+          content_type: fileToUpload.type
+        })
+      });
+      
+      if (!prepareResponse.ok) {
+        const error = await prepareResponse.json();
+        throw new Error(error.error || 'Failed to prepare upload');
       }
-    });
+      
+      const { upload_url, url: cdnUrl } = await prepareResponse.json();
+      console.log('[UPLOAD] Got presigned URL, uploading directly to S3');
+      
+      toast({ title: "Загрузка...", description: "Отправляю файл" });
+      
+      const uploadResponse = await fetch(upload_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': fileToUpload.type },
+        body: fileToUpload
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload file to S3');
+      }
+      
+      console.log('[UPLOAD] Success! CDN URL:', cdnUrl);
+      setUploadedUrl(cdnUrl);
+      toast({ title: "✓ Файл загружен", description: "Готов к обработке" });
+      
+    } catch (error) {
+      console.error('[UPLOAD] Error:', error);
+      toast({ 
+        title: "Ошибка загрузки",
+        description: String(error),
+        variant: "destructive" 
+      });
+      throw error;
+    }
   };
 
   const processAudio = async (type: string, name: string) => {
