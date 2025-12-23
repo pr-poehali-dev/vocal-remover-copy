@@ -5,6 +5,7 @@ import base64
 import hashlib
 from typing import Dict, Any
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 s3 = boto3.client('s3',
     endpoint_url='https://bucket.poehali.dev',
@@ -107,13 +108,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             metadata_obj = s3.get_object(Bucket='files', Key=metadata_key)
             metadata = json.loads(metadata_obj['Body'].read().decode('utf-8'))
             
-            chunks_data = []
-            for i in range(total_chunks):
-                chunk_key = f'audio/temp/{upload_id}/chunk_{i:04d}.bin'
+            def download_chunk(chunk_index: int) -> tuple:
+                chunk_key = f'audio/temp/{upload_id}/chunk_{chunk_index:04d}.bin'
                 chunk_obj = s3.get_object(Bucket='files', Key=chunk_key)
-                chunks_data.append(chunk_obj['Body'].read())
+                return (chunk_index, chunk_obj['Body'].read())
             
-            full_data = b''.join(chunks_data)
+            chunks_dict = {}
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [executor.submit(download_chunk, i) for i in range(total_chunks)]
+                for future in as_completed(futures):
+                    idx, data = future.result()
+                    chunks_dict[idx] = data
+            
+            full_data = b''.join([chunks_dict[i] for i in range(total_chunks)])
             
             s3.put_object(
                 Bucket='files',
@@ -122,9 +129,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 ContentType=metadata['content_type']
             )
             
-            for i in range(total_chunks):
-                chunk_key = f'audio/temp/{upload_id}/chunk_{i:04d}.bin'
+            def delete_chunk(chunk_index: int):
+                chunk_key = f'audio/temp/{upload_id}/chunk_{chunk_index:04d}.bin'
                 s3.delete_object(Bucket='files', Key=chunk_key)
+            
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                executor.map(delete_chunk, range(total_chunks))
+            
             s3.delete_object(Bucket='files', Key=metadata_key)
             
             cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{metadata['key']}"
