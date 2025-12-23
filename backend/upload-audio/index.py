@@ -12,12 +12,10 @@ s3 = boto3.client('s3',
     aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
 )
 
-upload_sessions = {}
-
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Загружает аудиофайлы в S3 через chunked upload.
-    Поддерживает загрузку частями для файлов до 100 МБ.
+    Каждый чанк сохраняется в S3, затем собирается в финальный файл.
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -58,11 +56,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             upload_id = f"{timestamp}_{random_hash}"
             key = f'audio/uploads/{upload_id}_{filename}'
             
-            upload_sessions[upload_id] = {
-                'key': key,
-                'content_type': content_type,
-                'chunks': []
-            }
+            metadata_key = f'audio/temp/{upload_id}/metadata.json'
+            s3.put_object(
+                Bucket='files',
+                Key=metadata_key,
+                Body=json.dumps({'key': key, 'content_type': content_type, 'filename': filename}),
+                ContentType='application/json'
+            )
             
             return {
                 'statusCode': 200,
@@ -79,19 +79,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             chunk_data = body_data.get('chunk_data')
             chunk_index = body_data.get('chunk_index', 0)
             
-            if upload_id not in upload_sessions:
-                return {
-                    'statusCode': 400,
-                    'headers': {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
-                    },
-                    'body': json.dumps({'error': 'Invalid upload_id'}),
-                    'isBase64Encoded': False
-                }
-            
             chunk_bytes = base64.b64decode(chunk_data)
-            upload_sessions[upload_id]['chunks'].append((chunk_index, chunk_bytes))
+            chunk_key = f'audio/temp/{upload_id}/chunk_{chunk_index:04d}.bin'
+            
+            s3.put_object(
+                Bucket='files',
+                Key=chunk_key,
+                Body=chunk_bytes,
+                ContentType='application/octet-stream'
+            )
             
             return {
                 'statusCode': 200,
@@ -105,33 +101,33 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         elif action == 'finalize':
             upload_id = body_data.get('upload_id')
+            total_chunks = body_data.get('total_chunks', 0)
             
-            if upload_id not in upload_sessions:
-                return {
-                    'statusCode': 400,
-                    'headers': {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
-                    },
-                    'body': json.dumps({'error': 'Invalid upload_id'}),
-                    'isBase64Encoded': False
-                }
+            metadata_key = f'audio/temp/{upload_id}/metadata.json'
+            metadata_obj = s3.get_object(Bucket='files', Key=metadata_key)
+            metadata = json.loads(metadata_obj['Body'].read().decode('utf-8'))
             
-            session = upload_sessions[upload_id]
-            session['chunks'].sort(key=lambda x: x[0])
+            chunks_data = []
+            for i in range(total_chunks):
+                chunk_key = f'audio/temp/{upload_id}/chunk_{i:04d}.bin'
+                chunk_obj = s3.get_object(Bucket='files', Key=chunk_key)
+                chunks_data.append(chunk_obj['Body'].read())
             
-            full_data = b''.join([chunk[1] for chunk in session['chunks']])
+            full_data = b''.join(chunks_data)
             
             s3.put_object(
                 Bucket='files',
-                Key=session['key'],
+                Key=metadata['key'],
                 Body=full_data,
-                ContentType=session['content_type']
+                ContentType=metadata['content_type']
             )
             
-            cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{session['key']}"
+            for i in range(total_chunks):
+                chunk_key = f'audio/temp/{upload_id}/chunk_{i:04d}.bin'
+                s3.delete_object(Bucket='files', Key=chunk_key)
+            s3.delete_object(Bucket='files', Key=metadata_key)
             
-            del upload_sessions[upload_id]
+            cdn_url = f"https://cdn.poehali.dev/projects/{os.environ['AWS_ACCESS_KEY_ID']}/bucket/{metadata['key']}"
             
             return {
                 'statusCode': 200,
@@ -142,7 +138,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({
                     'status': 'uploaded',
                     'url': cdn_url,
-                    'key': session['key'],
+                    'key': metadata['key'],
                     'size': len(full_data)
                 }),
                 'isBase64Encoded': False

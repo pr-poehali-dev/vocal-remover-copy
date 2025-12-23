@@ -130,7 +130,8 @@ export default function Index() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'finalize',
-          upload_id
+          upload_id,
+          total_chunks: totalChunks
         })
       });
       
