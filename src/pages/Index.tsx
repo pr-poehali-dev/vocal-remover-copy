@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import Icon from "@/components/ui/icon";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
@@ -27,6 +28,7 @@ export default function Index() {
   const [uploadedUrl, setUploadedUrl] = useState<string>("");
   const [processedTracks, setProcessedTracks] = useState<ProcessedTrack[]>([]);
   const [currentPlaying, setCurrentPlaying] = useState<string | null>(null);
+  const [originalAudioUrl, setOriginalAudioUrl] = useState<string>("");
   const audioRef = useRef<HTMLAudioElement>(null);
   const { toast } = useToast();
 
@@ -138,6 +140,7 @@ export default function Index() {
       console.log('[UPLOAD] Success! CDN URL:', responseData.url);
       setUploadProgress(100);
       setUploadedUrl(responseData.url);
+      setOriginalAudioUrl(responseData.url);
       toast({ title: "✓ Файл загружен", description: "Готов к обработке" });
       
     } catch (error) {
@@ -214,10 +217,17 @@ export default function Index() {
         setCurrentPlaying(null);
       } else {
         audioRef.current.src = url;
-        audioRef.current.play();
+        audioRef.current.play().catch(error => {
+          console.error('Playback error:', error);
+          toast({ title: "Ошибка", description: "Не удалось воспроизвести трек", variant: "destructive" });
+        });
         setCurrentPlaying(url);
       }
     }
+  };
+
+  const handleAudioEnded = () => {
+    setCurrentPlaying(null);
   };
 
   const downloadTrack = (url: string, filename: string) => {
@@ -280,6 +290,29 @@ export default function Index() {
           </TabsContent>
 
           <TabsContent value="process">
+            {originalAudioUrl && (
+              <div className="bg-card border rounded-lg p-6 mb-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <Icon name="Disc" size={24} />
+                  Оригинальный файл
+                </h3>
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => playTrack(originalAudioUrl)}
+                  >
+                    <Icon 
+                      name={currentPlaying === originalAudioUrl ? "Pause" : "Play"} 
+                      size={20} 
+                      className="mr-2" 
+                    />
+                    {currentPlaying === originalAudioUrl ? "Пауза" : "Воспроизвести оригинал"}
+                  </Button>
+                  <span className="text-sm text-muted-foreground">{file?.name}</span>
+                </div>
+              </div>
+            )}
+
             <ProcessingPanel
               processing={processing}
               progress={progress}
@@ -442,7 +475,7 @@ export default function Index() {
         </div>
       </footer>
 
-      <audio ref={audioRef} onEnded={() => setCurrentPlaying(null)} />
+      <audio ref={audioRef} onEnded={handleAudioEnded} />
     </div>
   );
 }
