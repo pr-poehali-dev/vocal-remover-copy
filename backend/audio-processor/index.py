@@ -64,27 +64,27 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         os.environ['REPLICATE_API_TOKEN'] = replicate_token
         
-        stem_mapping = {
-            'vocals': 'vocals',
-            'accompaniment': 'no_vocals',
-            'bass': 'bass',
-            'drums': 'drums'
-        }
-        
-        stem_type = stem_mapping.get(separation_type, 'vocals')
-        
         output = replicate.run(
-            "jarredou/demucs-v4:10a168f7e46a8def5b63b94c07afd23f4a24bdd1c7a76eeb8e03f56f96be0e8a",
+            "cjwbw/demucs:1d0ee79db0e28f9bd2daf950b2e433f1e58743c835827bd161f5df8ad4f82bfb",
             input={
-                "audio": audio_url,
-                "stem": stem_type
+                "audio": audio_url
             }
         )
+        
+        output_urls = {}
+        if output and isinstance(output, dict):
+            mapping = {
+                'vocals': output.get('vocals'),
+                'accompaniment': output.get('other'),
+                'bass': output.get('bass'),
+                'drums': output.get('drums')
+            }
+            output_urls = {separation_type: mapping.get(separation_type, output.get('vocals'))}
         
         result = {
             'status': 'completed',
             'request_id': context.request_id,
-            'output': output
+            'output': output_urls.get(separation_type) if output_urls else output
         }
         
         return {
