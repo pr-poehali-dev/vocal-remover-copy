@@ -64,8 +64,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         os.environ['REPLICATE_API_TOKEN'] = replicate_token
         
-        output = replicate.run(
-            "cjwbw/demucs:1d0ee79db0e28f9bd2daf950b2e433f1e58743c835827bd161f5df8ad4f82bfb",
+        client = replicate.Client(api_token=replicate_token)
+        
+        output = client.run(
+            "facebookresearch/demucs",
             input={
                 "audio": audio_url
             }
