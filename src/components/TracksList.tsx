@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Icon from "@/components/ui/icon";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface ProcessedTrack {
   type: string;
@@ -21,13 +22,15 @@ export default function TracksList({
   onPlay,
   onDownload
 }: TracksListProps) {
+  const { t } = useLanguage();
+
   if (tracks.length === 0) return null;
 
   return (
     <Card className="p-8 mt-6">
       <h3 className="text-2xl font-semibold mb-6 flex items-center gap-2">
         <Icon name="ListMusic" size={28} />
-        Обработанные треки
+        {t.tracks.title}
       </h3>
       <div className="space-y-4">
         {tracks.map((track, index) => (
@@ -41,7 +44,7 @@ export default function TracksList({
               </div>
               <div>
                 <p className="font-semibold">{track.name}</p>
-                <p className="text-sm text-muted-foreground">Готов к прослушиванию</p>
+                <p className="text-sm text-muted-foreground">{t.tracks.ready}</p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
@@ -55,7 +58,7 @@ export default function TracksList({
                   size={16} 
                   className="mr-2" 
                 />
-                {currentPlaying === track.url ? "Пауза" : "Играть"}
+                {currentPlaying === track.url ? t.tracks.pause : t.tracks.play}
               </Button>
               <Button
                 variant="outline"
@@ -63,7 +66,7 @@ export default function TracksList({
                 onClick={() => onDownload(track.url, `${track.name}.mp3`)}
               >
                 <Icon name="Download" size={16} className="mr-2" />
-                Скачать
+                {t.tracks.download}
               </Button>
             </div>
           </div>

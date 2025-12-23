@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Icon from "@/components/ui/icon";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface FileUploadProps {
   file: File | null;
@@ -19,6 +20,8 @@ export default function FileUpload({
   onDrop,
   onFileInput
 }: FileUploadProps) {
+  const { t } = useLanguage();
+
   return (
     <Card
       className={`p-12 border-2 border-dashed transition-all ${
@@ -34,10 +37,10 @@ export default function FileUpload({
         </div>
         <div>
           <h3 className="text-xl font-semibold mb-2">
-            Перетащите аудиофайл сюда
+            {t.upload.dragDrop}
           </h3>
           <p className="text-muted-foreground">
-            или нажмите кнопку для выбора
+            {t.upload.or}
           </p>
         </div>
         <label>
@@ -50,10 +53,11 @@ export default function FileUpload({
           <Button size="lg" asChild>
             <span className="cursor-pointer">
               <Icon name="Upload" size={20} className="mr-2" />
-              Выбрать файл
+              {t.upload.chooseFile}
             </span>
           </Button>
         </label>
+        <p className="text-sm text-muted-foreground">{t.upload.supported}</p>
         {file && (
           <div className="mt-6 p-4 bg-secondary rounded-lg flex items-center justify-between">
             <div className="flex items-center space-x-3">
